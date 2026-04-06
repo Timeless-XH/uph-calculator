@@ -6,32 +6,15 @@ Attribute VB_Name = "UPHCalculator"
 
 Option Explicit
 
-' 工站数据结构
-Private Type Station
-    Name As String
-    ProcessTime As Double
-    BufferCapacity As Integer
-End Type
+' 全局变量 - 使用简单类型避免Type定义问题
+Private gProductCount As Integer
+Private gStationCount As Integer
+Private gStationNames() As String
+Private gStationTimes() As Double
+Private gStationBuffers() As Integer
 
-' 产品时间线事件
-Private Type TimeEvent
-    StationIndex As Integer
-    StartTime As Double
-    EndTime As Double
-End Type
-
-' 配置数据结构
-Private Type Config
-    Name As String
-    ProductCount As Integer
-    Stations() As Station
-    StationCount As Integer
-End Type
-
-' 全局变量
-Private CurrentConfig As Config
-Private Configs As Collection
-Private CurrentConfigName As String
+Private gConfigs As Collection
+Private gCurrentConfigName As String
 
 '==================================================
 ' 主入口：创建UPH计算器界面
@@ -67,31 +50,60 @@ End Sub
 ' 初始化默认配置
 '==================================================
 Private Sub InitializeConfig()
-    Set Configs = New Collection
+    Set gConfigs = New Collection
     
     ' 创建默认配置
-    Dim defaultCfg As Config
-    defaultCfg.Name = "默认配置"
-    defaultCfg.ProductCount = 13
-    defaultCfg.StationCount = 3
+    Dim defaultCfg As String
+    defaultCfg = "默认配置|13|焊接|6|2|切割|20|2|清洗|8|2"
     
-    ReDim defaultCfg.Stations(1 To 3)
-    defaultCfg.Stations(1).Name = "焊接"
-    defaultCfg.Stations(1).ProcessTime = 6
-    defaultCfg.Stations(1).BufferCapacity = 2
+    gConfigs.Add defaultCfg, "默认配置"
+    gCurrentConfigName = "默认配置"
     
-    defaultCfg.Stations(2).Name = "切割"
-    defaultCfg.Stations(2).ProcessTime = 20
-    defaultCfg.Stations(2).BufferCapacity = 2
-    
-    defaultCfg.Stations(3).Name = "清洗"
-    defaultCfg.Stations(3).ProcessTime = 8
-    defaultCfg.Stations(3).BufferCapacity = 2
-    
-    Configs.Add defaultCfg, "默认配置"
-    CurrentConfigName = "默认配置"
-    CurrentConfig = defaultCfg
+    ' 解析到全局变量
+    ParseConfig defaultCfg
 End Sub
+
+' 解析配置字符串
+Private Sub ParseConfig(cfgStr As String)
+    Dim parts() As String
+    parts = Split(cfgStr, "|")
+    
+    Dim idx As Integer
+    idx = 0
+    
+    ' 跳过名称
+    idx = 1
+    gProductCount = Val(parts(idx))
+    idx = idx + 1
+    
+    ' 计算工站数
+    gStationCount = (UBound(parts) - 2) / 3
+    
+    ReDim gStationNames(1 To gStationCount)
+    ReDim gStationTimes(1 To gStationCount)
+    ReDim gStationBuffers(1 To gStationCount)
+    
+    Dim i As Integer
+    For i = 1 To gStationCount
+        gStationNames(i) = parts(idx)
+        gStationTimes(i) = Val(parts(idx + 1))
+        gStationBuffers(i) = Val(parts(idx + 2))
+        idx = idx + 3
+    Next i
+End Sub
+
+' 生成配置字符串
+Private Function BuildConfig(name As String) As String
+    Dim result As String
+    result = name & "|" & gProductCount
+    
+    Dim i As Integer
+    For i = 1 To gStationCount
+        result = result & "|" & gStationNames(i) & "|" & gStationTimes(i) & "|" & gStationBuffers(i)
+    Next i
+    
+    BuildConfig = result
+End Function
 
 '==================================================
 ' 绘制界面
@@ -287,13 +299,16 @@ End Sub
 ' 填充配置下拉框
 '==================================================
 Private Sub FillConfigCombo(ws As Worksheet)
-    ' 在Excel中用数据验证模拟下拉框
     Dim configList As String
     Dim i As Integer
     
-    For i = 1 To Configs.Count
-        configList = configList & Configs(i).Name
-        If i < Configs.Count Then configList = configList & ","
+    For i = 1 To gConfigs.Count
+        Dim cfgStr As String
+        cfgStr = gConfigs(i)
+        Dim parts() As String
+        parts = Split(cfgStr, "|")
+        configList = configList & parts(0)
+        If i < gConfigs.Count Then configList = configList & ","
     Next i
     
     With ws.Range("C4").Validation
@@ -301,33 +316,33 @@ Private Sub FillConfigCombo(ws As Worksheet)
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, Formula1:=configList
     End With
     
-    ws.Range("C4").Value = CurrentConfigName
+    ws.Range("C4").Value = gCurrentConfigName
 End Sub
 
 '==================================================
 ' 加载配置到工作表
 '==================================================
 Private Sub LoadConfigToSheet(ws As Worksheet, configName As String)
-    Dim cfg As Config
-    Dim i As Integer
-    
     On Error GoTo ErrHandler
     
-    Set cfg = Configs(configName)
-    CurrentConfigName = configName
-    CurrentConfig = cfg
+    Dim cfgStr As String
+    cfgStr = gConfigs(configName)
+    
+    ParseConfig cfgStr
+    gCurrentConfigName = configName
     
     ' 清空工站区域
     ws.Range("C11:E20").ClearContents
     
     ' 填充产品数
-    ws.Range("C7").Value = cfg.ProductCount
+    ws.Range("C7").Value = gProductCount
     
     ' 填充工站数据
-    For i = 1 To cfg.StationCount
-        ws.Range("C" & (10 + i)).Value = cfg.Stations(i).Name
-        ws.Range("D" & (10 + i)).Value = cfg.Stations(i).ProcessTime
-        ws.Range("E" & (10 + i)).Value = cfg.Stations(i).BufferCapacity
+    Dim i As Integer
+    For i = 1 To gStationCount
+        ws.Range("C" & (10 + i)).Value = gStationNames(i)
+        ws.Range("D" & (10 + i)).Value = gStationTimes(i)
+        ws.Range("E" & (10 + i)).Value = gStationBuffers(i)
     Next i
     
     ws.Range("C4").Value = configName
@@ -340,15 +355,13 @@ End Sub
 '==================================================
 ' 从工作表读取配置
 '==================================================
-Private Function ReadConfigFromSheet(ws As Worksheet) As Config
-    Dim cfg As Config
-    Dim i As Integer, count As Integer
-    
-    cfg.Name = CurrentConfigName
-    cfg.ProductCount = ws.Range("C7").Value
+Private Sub ReadConfigFromSheet(ws As Worksheet)
+    gProductCount = ws.Range("C7").Value
     
     ' 统计有效工站数
+    Dim count As Integer
     count = 0
+    Dim i As Integer
     For i = 1 To 10
         If Trim(ws.Range("C" & (10 + i)).Value) <> "" Then
             count = count + 1
@@ -356,20 +369,21 @@ Private Function ReadConfigFromSheet(ws As Worksheet) As Config
     Next i
     
     If count = 0 Then count = 1
-    cfg.StationCount = count
-    ReDim cfg.Stations(1 To count)
+    gStationCount = count
+    
+    ReDim gStationNames(1 To count)
+    ReDim gStationTimes(1 To count)
+    ReDim gStationBuffers(1 To count)
     
     For i = 1 To count
-        cfg.Stations(i).Name = ws.Range("C" & (10 + i)).Value
-        If cfg.Stations(i).Name = "" Then cfg.Stations(i).Name = "工站" & i
-        cfg.Stations(i).ProcessTime = Val(ws.Range("D" & (10 + i)).Value)
-        If cfg.Stations(i).ProcessTime <= 0 Then cfg.Stations(i).ProcessTime = 1
-        cfg.Stations(i).BufferCapacity = Val(ws.Range("E" & (10 + i)).Value)
-        If cfg.Stations(i).BufferCapacity <= 0 Then cfg.Stations(i).BufferCapacity = 1
+        gStationNames(i) = ws.Range("C" & (10 + i)).Value
+        If gStationNames(i) = "" Then gStationNames(i) = "工站" & i
+        gStationTimes(i) = Val(ws.Range("D" & (10 + i)).Value)
+        If gStationTimes(i) <= 0 Then gStationTimes(i) = 1
+        gStationBuffers(i) = Val(ws.Range("E" & (10 + i)).Value)
+        If gStationBuffers(i) <= 0 Then gStationBuffers(i) = 1
     Next i
-    
-    ReadConfigFromSheet = cfg
-End Function
+End Sub
 
 '==================================================
 ' 保存当前配置
@@ -378,14 +392,14 @@ Public Sub SaveCurrentConfig()
     Dim ws As Worksheet
     Set ws = Sheets("UPH计算器")
     
-    Dim cfg As Config
-    cfg = ReadConfigFromSheet(ws)
-    cfg.Name = CurrentConfigName
+    ReadConfigFromSheet ws
+    
+    Dim cfgStr As String
+    cfgStr = BuildConfig(gCurrentConfigName)
     
     ' 更新集合中的配置
-    Configs.Remove CurrentConfigName
-    Configs.Add cfg, cfg.Name
-    CurrentConfig = cfg
+    gConfigs.Remove gCurrentConfigName
+    gConfigs.Add cfgStr, gCurrentConfigName
     
     MsgBox "配置已保存！", vbInformation
 End Sub
@@ -395,20 +409,20 @@ End Sub
 '==================================================
 Public Sub SaveAsNewConfig()
     Dim newName As String
-    newName = InputBox("请输入新配置名称：", "另存为", CurrentConfigName & " 副本")
+    newName = InputBox("请输入新配置名称：", "另存为", gCurrentConfigName & " 副本")
     
     If newName = "" Then Exit Sub
     
     Dim ws As Worksheet
     Set ws = Sheets("UPH计算器")
     
-    Dim cfg As Config
-    cfg = ReadConfigFromSheet(ws)
-    cfg.Name = newName
+    ReadConfigFromSheet ws
     
-    Configs.Add cfg, newName
-    CurrentConfigName = newName
-    CurrentConfig = cfg
+    Dim cfgStr As String
+    cfgStr = BuildConfig(newName)
+    
+    gConfigs.Add cfgStr, newName
+    gCurrentConfigName = newName
     
     FillConfigCombo ws
     ws.Range("C4").Value = newName
@@ -420,7 +434,7 @@ End Sub
 ' 删除当前配置
 '==================================================
 Public Sub DeleteCurrentConfig()
-    If Configs.Count <= 1 Then
+    If gConfigs.Count <= 1 Then
         MsgBox "至少保留一个配置！", vbExclamation
         Exit Sub
     End If
@@ -428,15 +442,17 @@ Public Sub DeleteCurrentConfig()
     Dim ws As Worksheet
     Set ws = Sheets("UPH计算器")
     
-    Configs.Remove CurrentConfigName
+    gConfigs.Remove gCurrentConfigName
     
     ' 切换到第一个配置
-    Dim firstCfg As Config
-    Set firstCfg = Configs(1)
-    CurrentConfigName = firstCfg.Name
+    Dim firstCfg As String
+    firstCfg = gConfigs(1)
+    Dim parts() As String
+    parts = Split(firstCfg, "|")
+    gCurrentConfigName = parts(0)
     
     FillConfigCombo ws
-    LoadConfigToSheet ws, CurrentConfigName
+    LoadConfigToSheet ws, gCurrentConfigName
     
     MsgBox "配置已删除", vbInformation
 End Sub
@@ -471,59 +487,63 @@ Public Sub RunSimulation()
     Dim ws As Worksheet
     Set ws = Sheets("UPH计算器")
     
-    Dim cfg As Config
-    cfg = ReadConfigFromSheet(ws)
+    ReadConfigFromSheet ws
     
     ' 运行模拟
-    Dim result As SimulationResult
-    result = Simulate(cfg)
+    Dim totalTime As Double
+    Dim actualUPH As Double
+    Dim theoryUPH As Double
+    Dim btlIdx As Integer
+    Dim completed As Integer
+    
+    Dim util() As Double
+    Dim timeline() As String
+    Dim timelineCount As Integer
+    
+    Simulate totalTime, actualUPH, theoryUPH, btlIdx, completed, util, timeline, timelineCount
     
     ' 显示结果
-    DisplayResults ws, result, cfg
+    DisplayResults ws, totalTime, actualUPH, theoryUPH, btlIdx, completed, util, timeline, timelineCount
 End Sub
-
-'==================================================
-' 模拟结果结构
-'==================================================
-Private Type SimulationResult
-    TotalTime As Double
-    ActualUPH As Double
-    TheoryUPH As Double
-    BottleneckIndex As Integer
-    Utilization() As Double
-    Completed As Integer
-    Timeline() As TimeEvent
-    TimelineCount As Integer
-End Type
 
 '==================================================
 ' 核心模拟算法 - 阻塞反压
 '==================================================
-Private Function Simulate(cfg As Config) As SimulationResult
-    Dim nProducts As Integer, nStations As Integer
-    nProducts = cfg.ProductCount
-    nStations = cfg.StationCount
+Private Sub Simulate(ByRef totalTime As Double, ByRef actualUPH As Double, _
+    ByRef theoryUPH As Double, ByRef btlIdx As Integer, ByRef completed As Integer, _
+    ByRef util() As Double, ByRef timeline() As String, ByRef timelineCount As Integer)
     
-    Dim result As SimulationResult
+    Dim nProducts As Integer
+    Dim nStations As Integer
+    nProducts = gProductCount
+    nStations = gStationCount
     
     If nProducts = 0 Or nStations = 0 Then
-        Simulate = result
-        Exit Function
+        totalTime = 0
+        actualUPH = 0
+        theoryUPH = 0
+        btlIdx = 1
+        completed = 0
+        Exit Sub
     End If
     
-    ' 产品时间线
-    ReDim productTimeline(1 To nProducts) As Collection
+    ' 产品时间线 - 使用字符串存储: "station|start|end"
+    Dim productTimeline() As Collection
+    ReDim productTimeline(1 To nProducts)
     Dim p As Integer, s As Integer
     For p = 1 To nProducts
         Set productTimeline(p) = New Collection
     Next p
     
     ' 缓冲区
-    ReDim buffer(1 To nStations) As Collection
-    ReDim bufferCap(1 To nStations) As Integer
+    Dim buffer() As Collection
+    ReDim buffer(1 To nStations)
+    
+    Dim bufferCap() As Integer
+    ReDim bufferCap(1 To nStations)
     bufferCap(1) = 9999  ' 第一个工站输入无限制
     For s = 2 To nStations
-        bufferCap(s) = cfg.Stations(s).BufferCapacity
+        bufferCap(s) = gStationBuffers(s)
     Next s
     
     For s = 1 To nStations
@@ -536,10 +556,15 @@ Private Function Simulate(cfg As Config) As SimulationResult
     Next p
     
     ' 工站状态
-    ReDim machineProduct(1 To nStations) As Integer
-    ReDim machineFinish(1 To nStations) As Double
-    ReDim stationBlocked(1 To nStations) As Boolean
-    ReDim blockedQueue(1 To nStations) As Collection
+    Dim machineProduct() As Integer
+    Dim machineFinish() As Double
+    Dim stationBlocked() As Boolean
+    Dim blockedQueue() As Collection
+    
+    ReDim machineProduct(1 To nStations)
+    ReDim machineFinish(1 To nStations)
+    ReDim stationBlocked(1 To nStations)
+    ReDim blockedQueue(1 To nStations)
     
     For s = 1 To nStations
         machineProduct(s) = 0
@@ -548,35 +573,41 @@ Private Function Simulate(cfg As Config) As SimulationResult
         Set blockedQueue(s) = New Collection
     Next s
     
-    ' 事件队列
+    ' 事件队列 - 存储字符串 "time|station|product"
     Dim events As Collection
     Set events = New Collection
     
     Dim currentTime As Double
     currentTime = 0
     
-    ' 尝试启动工站处理
-    Dim maxIter As Long, iter As Long
+    Dim maxIter As Long
     maxIter = nProducts * nStations * 100 + 10000
     
     ' 初始启动
     For s = 1 To nStations
         TryStartStation s, currentTime, buffer, machineProduct, machineFinish, _
-            productTimeline, events, stationBlocked, cfg
+            productTimeline, events, stationBlocked
     Next s
     
     ' 事件循环
+    Dim iter As Long
+    iter = 0
+    
     Do While events.Count > 0 And iter < maxIter
         iter = iter + 1
         
         ' 找最早事件
-        Dim minTime As Double, minIdx As Integer
+        Dim minTime As Double
+        Dim minIdx As Integer
         minTime = 1E+30
         minIdx = 1
+        
         Dim i As Integer
         For i = 1 To events.Count
-            If events(i) < minTime Then
-                minTime = events(i)
+            Dim evParts() As String
+            evParts = Split(events(i), "|")
+            If Val(evParts(0)) < minTime Then
+                minTime = Val(evParts(0))
                 minIdx = i
             End If
         Next i
@@ -584,12 +615,17 @@ Private Function Simulate(cfg As Config) As SimulationResult
         currentTime = minTime
         
         ' 获取事件信息
-        Dim evStation As Integer, evProduct As Integer
-        ParseEvent events(minIdx), evStation, evProduct
+        Dim evStr As String
+        evStr = events(minIdx)
+        Dim evParts2() As String
+        evParts2 = Split(evStr, "|")
+        Dim evStation As Integer
+        Dim evProduct As Integer
+        evStation = Val(evParts2(1))
+        evProduct = Val(evParts2(2))
         
         events.Remove minIdx
         
-        ' 处理完成事件
         ' 工站完成
         machineProduct(evStation) = 0
         machineFinish(evStation) = 0
@@ -603,7 +639,7 @@ Private Function Simulate(cfg As Config) As SimulationResult
                 ' 缓冲区未满
                 buffer(nextS).Add evProduct
                 TryStartStation nextS, currentTime, buffer, machineProduct, machineFinish, _
-                    productTimeline, events, stationBlocked, cfg
+                    productTimeline, events, stationBlocked
             Else
                 ' 缓冲区满，阻塞
                 blockedQueue(evStation).Add evProduct
@@ -613,35 +649,33 @@ Private Function Simulate(cfg As Config) As SimulationResult
             ' 最后工站完成，检查上游
             For s = 1 To nStations - 1
                 CheckUnblock s, currentTime, buffer, bufferCap, blockedQueue, _
-                    stationBlocked, machineProduct, machineFinish, productTimeline, _
-                    events, cfg
+                    stationBlocked, machineProduct, machineFinish, productTimeline, events
             Next s
         End If
         
         ' 当前工站尝试处理下一个
         TryStartStation evStation, currentTime, buffer, machineProduct, machineFinish, _
-            productTimeline, events, stationBlocked, cfg
+            productTimeline, events, stationBlocked
         
         ' 检查上游阻塞
         For s = 1 To evStation - 1
             CheckUnblock s, currentTime, buffer, bufferCap, blockedQueue, _
-                stationBlocked, machineProduct, machineFinish, productTimeline, _
-                events, cfg
+                stationBlocked, machineProduct, machineFinish, productTimeline, events
         Next s
     Loop
     
     ' 计算总时间
-    Dim totalTime As Double
     totalTime = 0
-    Dim completed As Integer
     completed = 0
     
     For p = 1 To nProducts
         If productTimeline(p).Count > 0 Then
-            Dim lastEvent As TimeEvent
-            lastEvent = productTimeline(p)(productTimeline(p).Count)
-            If lastEvent.EndTime > totalTime Then
-                totalTime = lastEvent.EndTime
+            Dim lastEv As String
+            lastEv = productTimeline(p)(productTimeline(p).Count)
+            Dim lastParts() As String
+            lastParts = Split(lastEv, "|")
+            If Val(lastParts(2)) > totalTime Then
+                totalTime = Val(lastParts(2))
             End If
             If productTimeline(p).Count = nStations Then
                 completed = completed + 1
@@ -650,8 +684,9 @@ Private Function Simulate(cfg As Config) As SimulationResult
     Next p
     
     ' 计算利用率
-    ReDim busyTime(1 To nStations) As Double
-    ReDim utilization(1 To nStations) As Double
+    Dim busyTime() As Double
+    ReDim busyTime(1 To nStations)
+    ReDim util(1 To nStations)
     
     For s = 1 To nStations
         busyTime(s) = 0
@@ -660,28 +695,31 @@ Private Function Simulate(cfg As Config) As SimulationResult
     For p = 1 To nProducts
         Dim j As Integer
         For j = 1 To productTimeline(p).Count
-            Dim te As TimeEvent
-            te = productTimeline(p)(j)
-            busyTime(te.StationIndex) = busyTime(te.StationIndex) + (te.EndTime - te.StartTime)
+            Dim teStr As String
+            teStr = productTimeline(p)(j)
+            Dim teParts() As String
+            teParts = Split(teStr, "|")
+            Dim teStation As Integer
+            teStation = Val(teParts(0))
+            busyTime(teStation) = busyTime(teStation) + (Val(teParts(2)) - Val(teParts(1)))
         Next j
     Next p
     
     For s = 1 To nStations
         If totalTime > 0 Then
-            utilization(s) = busyTime(s) / totalTime
+            util(s) = busyTime(s) / totalTime
         Else
-            utilization(s) = 0
+            util(s) = 0
         End If
     Next s
     
     ' 找瓶颈工站
-    Dim btlIdx As Integer
     btlIdx = 1
     Dim maxU As Double
     maxU = 0
     For s = 1 To nStations
-        If utilization(s) > maxU Then
-            maxU = utilization(s)
+        If util(s) > maxU Then
+            maxU = util(s)
             btlIdx = s
         End If
     Next s
@@ -690,12 +728,11 @@ Private Function Simulate(cfg As Config) As SimulationResult
     Dim slowest As Double
     slowest = 0
     For s = 1 To nStations
-        If cfg.Stations(s).ProcessTime > slowest Then
-            slowest = cfg.Stations(s).ProcessTime
+        If gStationTimes(s) > slowest Then
+            slowest = gStationTimes(s)
         End If
     Next s
     
-    Dim theoryUPH As Double, actualUPH As Double
     If slowest > 0 Then theoryUPH = 60 / slowest
     If totalTime > 0 Then actualUPH = nProducts / (totalTime / 60)
     
@@ -705,52 +742,43 @@ Private Function Simulate(cfg As Config) As SimulationResult
     
     For p = 1 To nProducts
         For j = 1 To productTimeline(p).Count
-            Dim te2 As TimeEvent
-            te2 = productTimeline(p)(j)
-            allEvents.Add te2
+            Dim teStr2 As String
+            teStr2 = productTimeline(p)(j)
+            allEvents.Add teStr2 & "|" & p
         Next j
     Next p
     
     ' 排序并存储
-    ReDim result.Timeline(1 To allEvents.Count)
-    result.TimelineCount = allEvents.Count
+    timelineCount = allEvents.Count
+    ReDim timeline(1 To timelineCount)
     
-    ' 简单冒泡排序
-    For i = 1 To allEvents.Count - 1
-        For j = i + 1 To allEvents.Count
-            If allEvents(j).StartTime < allEvents(i).StartTime Then
-                Dim temp As TimeEvent
-                temp = allEvents(i)
-                allEvents.Remove i
-                allEvents.Add temp, Before:=j
-                ' 重新获取
-                Dim temp2 As TimeEvent
-                temp2 = allEvents(j)
-                allEvents.Remove j
-                allEvents.Add temp2, Before:=i
+    ' 简单排序（按开始时间）
+    For i = 1 To timelineCount
+        timeline(i) = allEvents(i)
+    Next i
+    
+    ' 冒泡排序
+    For i = 1 To timelineCount - 1
+        For j = i + 1 To timelineCount
+            Dim tiParts() As String
+            Dim tjParts() As String
+            tiParts = Split(timeline(i), "|")
+            tjParts = Split(timeline(j), "|")
+            If Val(tjParts(1)) < Val(tiParts(1)) Then
+                Dim temp As String
+                temp = timeline(i)
+                timeline(i) = timeline(j)
+                timeline(j) = temp
             End If
         Next j
     Next j
-    
-    For i = 1 To allEvents.Count
-        result.Timeline(i) = allEvents(i)
-    Next i
-    
-    result.TotalTime = totalTime
-    result.ActualUPH = actualUPH
-    result.TheoryUPH = theoryUPH
-    result.BottleneckIndex = btlIdx
-    result.Utilization = utilization
-    result.Completed = completed
-    
-    Simulate = result
-End Function
+End Sub
 
 ' 尝试启动工站
 Private Sub TryStartStation(s As Integer, currentTime As Double, buffer() As Collection, _
     machineProduct() As Integer, machineFinish() As Double, _
     productTimeline() As Collection, events As Collection, _
-    stationBlocked() As Boolean, cfg As Config)
+    stationBlocked() As Boolean)
     
     If machineProduct(s) > 0 Then Exit Sub  ' 正在忙
     If stationBlocked(s) Then Exit Sub  ' 被阻塞
@@ -760,21 +788,19 @@ Private Sub TryStartStation(s As Integer, currentTime As Double, buffer() As Col
     p = buffer(s)(1)
     buffer(s).Remove 1
     
-    Dim startTime As Double, endTime As Double
+    Dim startTime As Double
+    Dim endTime As Double
     startTime = currentTime
-    endTime = startTime + cfg.Stations(s).ProcessTime
+    endTime = startTime + gStationTimes(s)
     
     machineProduct(s) = p
     machineFinish(s) = endTime
     
-    Dim te As TimeEvent
-    te.StationIndex = s
-    te.StartTime = startTime
-    te.EndTime = endTime
-    productTimeline(p).Add te
+    ' 记录时间线: "station|start|end"
+    productTimeline(p).Add s & "|" & startTime & "|" & endTime
     
-    ' 添加完成事件
-    events.Add CreateEvent(endTime, s, p)
+    ' 添加完成事件: "time|station|product"
+    events.Add endTime & "|" & s & "|" & p
 End Sub
 
 ' 检查解除阻塞
@@ -782,12 +808,9 @@ Private Sub CheckUnblock(s As Integer, currentTime As Double, buffer() As Collec
     bufferCap() As Integer, blockedQueue() As Collection, _
     stationBlocked() As Boolean, machineProduct() As Integer, _
     machineFinish() As Double, productTimeline() As Collection, _
-    events As Collection, cfg As Config)
+    events As Collection)
     
-    Dim nStations As Integer
-    nStations = cfg.StationCount
-    
-    If s >= nStations Then Exit Sub
+    If s >= gStationCount Then Exit Sub
     If Not stationBlocked(s) Then Exit Sub
     
     Dim nextS As Integer
@@ -800,52 +823,42 @@ Private Sub CheckUnblock(s As Integer, currentTime As Double, buffer() As Collec
             blockedQueue(s).Remove 1
             buffer(nextS).Add p
             TryStartStation nextS, currentTime, buffer, machineProduct, machineFinish, _
-                productTimeline, events, stationBlocked, cfg
+                productTimeline, events, stationBlocked
         End If
         
         If blockedQueue(s).Count = 0 Then
             stationBlocked(s) = False
             TryStartStation s, currentTime, buffer, machineProduct, machineFinish, _
-                productTimeline, events, stationBlocked, cfg
+                productTimeline, events, stationBlocked
         End If
     End If
-End Sub
-
-' 创建事件字符串
-Private Function CreateEvent(time As Double, station As Integer, product As Integer) As String
-    CreateEvent = time & "|" & station & "|" & product
-End Function
-
-' 解析事件字符串
-Private Sub ParseEvent(ev As String, ByRef station As Integer, ByRef product As Integer)
-    Dim parts() As String
-    parts = Split(ev, "|")
-    station = Val(parts(1))
-    product = Val(parts(2))
 End Sub
 
 '==================================================
 ' 显示结果
 '==================================================
-Private Sub DisplayResults(ws As Worksheet, result As SimulationResult, cfg As Config)
+Private Sub DisplayResults(ws As Worksheet, totalTime As Double, actualUPH As Double, _
+    theoryUPH As Double, btlIdx As Integer, completed As Integer, _
+    util() As Double, timeline() As String, timelineCount As Integer)
+    
     ' 清空之前的结果
     ws.Range("G13:I22").ClearContents
     ws.Range("G26:I50").ClearContents
     
     ' 主要指标
-    ws.Range("H7").Value = Format(result.ActualUPH, "0.00")
-    ws.Range("H8").Value = Format(result.TotalTime, "0") & " 分钟"
-    ws.Range("H9").Value = Format(result.TheoryUPH, "0.00")
-    ws.Range("H10").Value = cfg.Stations(result.BottleneckIndex).Name
+    ws.Range("H7").Value = Format(actualUPH, "0.00")
+    ws.Range("H8").Value = Format(totalTime, "0") & " 分钟"
+    ws.Range("H9").Value = Format(theoryUPH, "0.00")
+    ws.Range("H10").Value = gStationNames(btlIdx)
     
     ' 利用率
     Dim s As Integer
-    For s = 1 To cfg.StationCount
-        ws.Range("G" & (12 + s)).Value = cfg.Stations(s).Name
-        ws.Range("H" & (12 + s)).Value = Format(result.Utilization(s) * 100, "0") & "%"
+    For s = 1 To gStationCount
+        ws.Range("G" & (12 + s)).Value = gStationNames(s)
+        ws.Range("H" & (12 + s)).Value = Format(util(s) * 100, "0") & "%"
         
         ' 瓶颈标记
-        If s = result.BottleneckIndex Then
+        If s = btlIdx Then
             ws.Range("G" & (12 + s) & ":H" & (12 + s)).Font.Color = RGB(240, 136, 62)
             ws.Range("I" & (12 + s)).Value = "← 瓶颈"
             ws.Range("I" & (12 + s)).Font.Color = RGB(240, 136, 62)
@@ -857,21 +870,30 @@ Private Sub DisplayResults(ws As Worksheet, result As SimulationResult, cfg As C
     
     ' 时间线事件（最多显示25条）
     Dim count As Integer
-    count = result.TimelineCount
+    count = timelineCount
     If count > 25 Then count = 25
     
     Dim i As Integer
     For i = 1 To count
-        Dim te As TimeEvent
-        te = result.Timeline(i)
-        ws.Range("G" & (25 + i)).Value = te.StartTime & "-" & te.EndTime & "m"
-        ws.Range("H" & (25 + i)).Value = "产品" & te.StationIndex & " -> " & cfg.Stations(te.StationIndex).Name
+        Dim parts() As String
+        parts = Split(timeline(i), "|")
+        Dim teStation As Integer
+        Dim teStart As Double
+        Dim teEnd As Double
+        Dim teProduct As Integer
+        teStation = Val(parts(0))
+        teStart = Val(parts(1))
+        teEnd = Val(parts(2))
+        teProduct = Val(parts(3))
+        
+        ws.Range("G" & (25 + i)).Value = teStart & "-" & teEnd & "m"
+        ws.Range("H" & (25 + i)).Value = "产品" & teProduct & " -> " & gStationNames(teStation)
     Next i
     
     MsgBox "计算完成！" & vbCrLf & _
-           "完成产品: " & result.Completed & "/" & cfg.ProductCount & vbCrLf & _
-           "总耗时: " & Format(result.TotalTime, "0") & " 分钟" & vbCrLf & _
-           "UPH: " & Format(result.ActualUPH, "0.00"), vbInformation
+           "完成产品: " & completed & "/" & gProductCount & vbCrLf & _
+           "总耗时: " & Format(totalTime, "0") & " 分钟" & vbCrLf & _
+           "UPH: " & Format(actualUPH, "0.00"), vbInformation
 End Sub
 
 '==================================================
