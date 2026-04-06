@@ -142,7 +142,7 @@ function renderStations(){
       '<div class="station-header">'+
         '<div class="station-index" style="background:'+c+'22;color:'+c+'">'+(i+1)+'</div>'+
         '<input class="station-name" value="'+s.name+'" data-idx="'+i+'">'+
-        (stations.length>1?'<button class="station-delete" data-idx="'+i+'">×</button>':'')+
+        (stations.length>1?'<button class="station-delete" data-idx="'+i+'">x</button>':'')+
       '</div>'+
       '<div class="station-fields">'+
         '<div class="field"><label>处理时间 (分钟)</label><input type="number" value="'+s.time+'" data-idx="'+i+'" data-field="time" min="1"></div>'+
@@ -169,7 +169,7 @@ document.getElementById('addBtn').onclick=function(){
   renderStations();
 };
 
-// 核心模拟函数 - 完全重写
+// 核心模拟函数 - 正确实现阻塞反压
 function simulate(nProducts, stns) {
   if (stns.length === 0 || nProducts === 0) return null;
   
@@ -181,58 +181,81 @@ function simulate(nProducts, stns) {
     productTimeline.push([]);
   }
   
-  // 每个工站的机器空闲时间
-  var machineBusyUntil = [];
-  for (var s = 0; s < nStations; s++) {
-    machineBusyUntil.push(0);
-  }
-  
-  // 每个工站当前处理的产品
-  var machineCurrent = [];
-  for (var s = 0; s < nStations; s++) {
-    machineCurrent.push(null);
-  }
-  
   // 每个工站的输入缓冲区
-  var inputBuffer = [];
+  var buffer = [];
   for (var s = 0; s < nStations; s++) {
-    inputBuffer.push([]);
+    buffer.push([]);
   }
   
-  // 缓冲区容量
-  var bufferCap = [];
-  bufferCap.push(Infinity);  // 工站0之前无限制
+  // 缓冲区容量 (工站0之前无限制)
+  var bufferCap = [Infinity];
   for (var s = 1; s < nStations; s++) {
     bufferCap.push(stns[s].buffer);
   }
   
-  // 初始化：所有产品在工站0的缓冲区等待
+  // 初始化: 所有产品在工站0的缓冲区
   for (var p = 0; p < nProducts; p++) {
-    inputBuffer[0].push(p);
+    buffer[0].push(p);
   }
   
-  // 事件队列: {time, type, station, product}
+  // 每个工站当前处理的产品和完成时间
+  var machineProduct = [];
+  var machineFinish = [];
+  for (var s = 0; s < nStations; s++) {
+    machineProduct.push(null);
+    machineFinish.push(0);
+  }
+  
+  // 每个工站是否被阻塞
+  var stationBlocked = [];
+  for (var s = 0; s < nStations; s++) {
+    stationBlocked.push(false);
+  }
+  
+  // 被阻塞的产品队列（每个工站输出端）
+  var blockedProducts = [];
+  for (var s = 0; s < nStations; s++) {
+    blockedProducts.push([]);
+  }
+  
+  // 事件队列
   var events = [];
   
-  // 尝试让工站s开始处理
+  // 尝试让工站开始处理
   function tryStart(s, now) {
-    if (machineCurrent[s] !== null) return;  // 正在忙
-    if (inputBuffer[s].length === 0) return;  // 没有等待的产品
+    if (machineProduct[s] !== null) return;  // 正在忙
+    if (stationBlocked[s]) return;  // 被阻塞
+    if (buffer[s].length === 0) return;  // 没有等待的产品
     
-    var p = inputBuffer[s].shift();
-    var start = Math.max(now, machineBusyUntil[s]);
+    var p = buffer[s].shift();
+    var start = now;
     var end = start + stns[s].time;
     
-    machineCurrent[s] = p;
-    machineBusyUntil[s] = end;
+    machineProduct[s] = p;
+    machineFinish[s] = end;
     
-    productTimeline[p].push({
-      station: s,
-      start: start,
-      end: end
-    });
-    
+    productTimeline[p].push({station: s, start: start, end: end});
     events.push({time: end, type: 'complete', station: s, product: p});
+  }
+  
+  // 检查工站是否可以解除阻塞
+  function checkUnblock(s, now) {
+    if (s >= nStations - 1) return;
+    if (!stationBlocked[s]) return;
+    
+    var nextS = s + 1;
+    if (buffer[nextS].length < bufferCap[nextS]) {
+      // 有空位
+      if (blockedProducts[s].length > 0) {
+        var p = blockedProducts[s].shift();
+        buffer[nextS].push(p);
+        tryStart(nextS, now);
+      }
+      if (blockedProducts[s].length === 0) {
+        stationBlocked[s] = false;
+        tryStart(s, now);
+      }
+    }
   }
   
   // 初始启动
@@ -246,7 +269,6 @@ function simulate(nProducts, stns) {
   var iter = 0;
   
   while (events.length > 0 && iter++ < maxIter) {
-    // 按时间排序
     events.sort(function(a, b) { return a.time - b.time; });
     var ev = events.shift();
     now = ev.time;
@@ -255,54 +277,55 @@ function simulate(nProducts, stns) {
       var s = ev.station;
       var p = ev.product;
       
-      // 工站s完成产品p
-      machineCurrent[s] = null;
+      // 工站完成当前产品
+      machineProduct[s] = null;
+      machineFinish[s] = 0;
       
-      // 产品p尝试进入下一个工站
+      // 产品尝试进入下一个工站
       if (s < nStations - 1) {
         var nextS = s + 1;
-        if (inputBuffer[nextS].length < bufferCap[nextS]) {
-          // 缓冲区未满，放入
-          inputBuffer[nextS].push(p);
+        if (buffer[nextS].length < bufferCap[nextS]) {
+          // 未满
+          buffer[nextS].push(p);
           tryStart(nextS, now);
         } else {
-          // 缓冲区满，产品被阻塞
-          events.push({time: now, type: 'blocked', station: s, product: p});
+          // 满了，产品被阻塞，工站被阻塞
+          blockedProducts[s].push(p);
+          stationBlocked[s] = true;
+        }
+      } else {
+        // 最后一个工站完成，检查上游
+        for (var up = 0; up < nStations - 1; up++) {
+          checkUnblock(up, now);
         }
       }
-      // 最后一个工站完成，产品结束
       
-      // 当前工站尝试处理下一个产品
+      // 当前工站尝试处理下一个
       tryStart(s, now);
-    }
-    else if (ev.type === 'blocked') {
-      var s = ev.station;
-      var p = ev.product;
-      var nextS = s + 1;
       
-      // 检查下一个缓冲区是否有空位
-      if (inputBuffer[nextS].length < bufferCap[nextS]) {
-        inputBuffer[nextS].push(p);
-        tryStart(nextS, now);
-      } else {
-        // 继续等待
-        events.push({time: now + 0.001, type: 'blocked', station: s, product: p});
+      // 检查上游是否可以解除阻塞
+      for (var up = 0; up < s; up++) {
+        checkUnblock(up, now);
       }
     }
   }
   
   // 计算总时间
   var totalTime = 0;
+  var completed = 0;
   for (var p = 0; p < nProducts; p++) {
     if (productTimeline[p].length > 0) {
       var last = productTimeline[p][productTimeline[p].length - 1];
       if (last.end > totalTime) {
         totalTime = last.end;
       }
+      if (productTimeline[p].length === nStations) {
+        completed++;
+      }
     }
   }
   
-  // 计算每个工站的利用率
+  // 计算利用率
   var busyTime = [];
   for (var s = 0; s < nStations; s++) {
     busyTime.push(0);
@@ -346,6 +369,7 @@ function simulate(nProducts, stns) {
     btlIdx: btlIdx,
     util: utilization,
     nProducts: nProducts,
+    completed: completed,
     stations: stns.map(function(s) { return { name: s.name, time: s.time }; })
   };
 }
