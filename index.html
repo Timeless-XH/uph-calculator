@@ -168,93 +168,189 @@ document.getElementById('addBtn').onclick=function(){
   stations.push({name:'工站'+(stations.length+1),time:10,buffer:2});
   renderStations();
 };
-function simulate(nProducts,stns){
-  if(stns.length===0||nProducts===0)return null;
-  var n=stns.length;
-  var events=[];
-  var machineFree=[];
-  for(var i=0;i<n;i++)machineFree.push(0);
-  var buffers=[];
-  for(var i=0;i<n;i++)buffers.push([]);
-  var bufferCap=[];
-  for(var i=0;i<n;i++)bufferCap.push(i===0?Infinity:stns[i].buffer);
-  var blocked=[];
-  for(var i=0;i<n;i++)blocked.push([]);
-  var pending=[];
-  for(var p=nProducts-1;p>=0;p--)pending.push(p);
-  var productTimeline=[];
-  for(var p=0;p<nProducts;p++)productTimeline.push([]);
-  var time=0;
-  function tryStart(s){
-    if(machineFree[s]>time)return;
-    var src=s===0?pending:buffers[s];
-    if(src.length===0)return;
-    var prod=src.shift();
-    var start=time;
-    var end=start+stns[s].time;
-    machineFree[s]=end;
-    productTimeline[prod].push({station:s,start:start,end:end});
-    events.push({time:end,type:'done',product:prod,station:s});
+
+// 核心模拟函数 - 事件驱动
+function simulate(nProducts, stns) {
+  if (stns.length === 0 || nProducts === 0) return null;
+  
+  var nStations = stns.length;
+  
+  // 工站对象
+  function Station(idx, time, bufferCap) {
+    this.idx = idx;
+    this.time = time;
+    this.bufferCap = bufferCap;  // 输入缓冲区容量
+    this.inputBuffer = [];       // 等待进入的产品队列
+    this.currentProduct = null;  // 正在处理的产品
+    this.finishTime = 0;         // 当前产品完成时间
   }
-  for(var s=0;s<n;s++)tryStart(s);
-  var maxIter=nProducts*n*50+1000;
-  var iter=0;
-  while(events.length>0&&iter++<maxIter){
-    events.sort(function(a,b){return a.time-b.time;});
-    var ev=events.shift();
-    time=ev.time;
-    if(ev.type==='done'){
-      var prod=ev.product;
-      var s=ev.station;
-      if(s<n-1){
-        var next=s+1;
-        if(buffers[next].length<bufferCap[next]){
-          buffers[next].push(prod);
-          tryStart(next);
-        }else{
-          blocked[s].push(prod);
+  
+  // 创建工站
+  var stationObjs = [];
+  for (var i = 0; i < nStations; i++) {
+    var cap = (i === 0) ? Infinity : stns[i].buffer;
+    stationObjs.push(new Station(i, stns[i].time, cap));
+  }
+  
+  // 初始化：所有产品在工站0的输入缓冲区
+  for (var p = 0; p < nProducts; p++) {
+    stationObjs[0].inputBuffer.push(p);
+  }
+  
+  // 产品时间线
+  var productTimeline = [];
+  for (var p = 0; p < nProducts; p++) {
+    productTimeline.push([]);
+  }
+  
+  // 事件队列: {time, type, stationIdx}
+  var events = [];
+  
+  // 尝试让工站开始处理
+  function tryStart(station, currentTime) {
+    if (station.currentProduct !== null) return;  // 正在忙
+    if (station.inputBuffer.length === 0) return;  // 没有等待的产品
+    
+    var product = station.inputBuffer.shift();
+    station.currentProduct = product;
+    station.finishTime = currentTime + station.time;
+    
+    productTimeline[product].push({
+      station: station.idx,
+      start: currentTime,
+      end: station.finishTime
+    });
+    
+    events.push({time: station.finishTime, type: 'complete', stationIdx: station.idx});
+  }
+  
+  // 初始启动
+  var currentTime = 0;
+  for (var i = 0; i < nStations; i++) {
+    tryStart(stationObjs[i], currentTime);
+  }
+  
+  // 事件循环
+  var maxIter = nProducts * nStations * 100 + 10000;
+  var iter = 0;
+  
+  while (events.length > 0 && iter++ < maxIter) {
+    // 按时间排序
+    events.sort(function(a, b) { return a.time - b.time; });
+    var ev = events.shift();
+    currentTime = ev.time;
+    
+    if (ev.type === 'complete') {
+      var station = stationObjs[ev.stationIdx];
+      var product = station.currentProduct;
+      station.currentProduct = null;
+      
+      // 产品完成当前工站，尝试进入下一个
+      if (ev.stationIdx < nStations - 1) {
+        var nextStation = stationObjs[ev.stationIdx + 1];
+        
+        // 检查下一个工站的缓冲区
+        if (nextStation.inputBuffer.length < nextStation.bufferCap) {
+          // 缓冲区未满，放入
+          nextStation.inputBuffer.push(product);
+          tryStart(nextStation, currentTime);
+        } else {
+          // 缓冲区满，产品被阻塞在当前工站
+          // 将产品重新放回当前工站，等待缓冲区空出
+          station.inputBuffer.unshift(product);
+          station.currentProduct = product;
+          station.finishTime = Infinity;  // 标记为阻塞
+          // 添加检查事件
+          events.push({time: currentTime + 0.001, type: 'check', stationIdx: ev.stationIdx});
+          continue;
         }
       }
-      tryStart(s);
-      while(blocked[s].length>0&&buffers[s+1].length<bufferCap[s+1]){
-        var bp=blocked[s].shift();
-        buffers[s+1].push(bp);
-        tryStart(s+1);
+      
+      // 当前工站尝试处理下一个产品
+      tryStart(station, currentTime);
+    }
+    else if (ev.type === 'check') {
+      // 检查阻塞状态
+      var station = stationObjs[ev.stationIdx];
+      if (station.currentProduct !== null && station.finishTime === Infinity) {
+        // 还在阻塞中
+        if (ev.stationIdx < nStations - 1) {
+          var nextStation = stationObjs[ev.stationIdx + 1];
+          if (nextStation.inputBuffer.length < nextStation.bufferCap) {
+            // 缓冲区有空位了
+            var product = station.currentProduct;
+            station.currentProduct = null;
+            nextStation.inputBuffer.push(product);
+            tryStart(nextStation, currentTime);
+            tryStart(station, currentTime);
+          } else {
+            // 继续等待
+            events.push({time: currentTime + 0.001, type: 'check', stationIdx: ev.stationIdx});
+          }
+        }
       }
     }
   }
-  var totalTime=0;
-  if(nProducts>0&&productTimeline[nProducts-1].length>0){
-    var last=productTimeline[nProducts-1][productTimeline[nProducts-1].length-1];
-    totalTime=last.end;
-  }
-  var busy=[];
-  for(var i=0;i<n;i++)busy.push(0);
-  for(var p=0;p<nProducts;p++){
-    for(var e=0;e<productTimeline[p].length;e++){
-      var ev=productTimeline[p][e];
-      busy[ev.station]+=ev.end-ev.start;
+  
+  // 计算总时间（最后一个产品完成的时间）
+  var totalTime = 0;
+  for (var p = 0; p < nProducts; p++) {
+    if (productTimeline[p].length > 0) {
+      var last = productTimeline[p][productTimeline[p].length - 1];
+      if (last.end > totalTime) {
+        totalTime = last.end;
+      }
     }
   }
-  var util=[];
-  for(var i=0;i<n;i++)util.push(totalTime>0?busy[i]/totalTime:0);
-  var btlIdx=0,maxU=0;
-  for(var i=0;i<n;i++)if(util[i]>maxU){maxU=util[i];btlIdx=i;}
-  var slowest=0;
-  for(var i=0;i<n;i++)if(stns[i].time>slowest)slowest=stns[i].time;
-  var theoryUPH=slowest>0?60/slowest:0;
-  var actualUPH=totalTime>0?nProducts/(totalTime/60):0;
-  return{
-    timeline:productTimeline,
-    totalTime:totalTime,
-    uph:actualUPH,
-    theoryUPH:theoryUPH,
-    btlIdx:btlIdx,
-    util:util,
-    nProducts:nProducts,
-    stations:stns.map(function(s){return{name:s.name,time:s.time};})
+  
+  // 计算每个工站的利用率
+  var busyTime = [];
+  for (var i = 0; i < nStations; i++) {
+    busyTime.push(0);
+  }
+  for (var p = 0; p < nProducts; p++) {
+    for (var i = 0; i < productTimeline[p].length; i++) {
+      var ev = productTimeline[p][i];
+      busyTime[ev.station] += ev.end - ev.start;
+    }
+  }
+  var utilization = [];
+  for (var i = 0; i < nStations; i++) {
+    utilization.push(totalTime > 0 ? busyTime[i] / totalTime : 0);
+  }
+  
+  // 找瓶颈工站（利用率最高）
+  var btlIdx = 0;
+  var maxU = 0;
+  for (var i = 0; i < nStations; i++) {
+    if (utilization[i] > maxU) {
+      maxU = utilization[i];
+      btlIdx = i;
+    }
+  }
+  
+  // 理论 UPH（瓶颈工站决定）
+  var slowest = 0;
+  for (var i = 0; i < nStations; i++) {
+    if (stns[i].time > slowest) slowest = stns[i].time;
+  }
+  var theoryUPH = slowest > 0 ? 60 / slowest : 0;
+  
+  // 实际 UPH
+  var actualUPH = totalTime > 0 ? nProducts / (totalTime / 60) : 0;
+  
+  return {
+    timeline: productTimeline,
+    totalTime: totalTime,
+    uph: actualUPH,
+    theoryUPH: theoryUPH,
+    btlIdx: btlIdx,
+    util: utilization,
+    nProducts: nProducts,
+    stations: stns.map(function(s) { return { name: s.name, time: s.time }; })
   };
 }
+
 function showResults(r){
   document.getElementById('results').style.display='block';
   document.getElementById('uphValue').textContent=r.uph.toFixed(2);
@@ -308,8 +404,8 @@ function showResults(r){
     var c=COLORS[ev.station%COLORS.length];
     eventsHtml+='<div class="event-row">'+
       '<div class="event-dot" style="background:'+c+'"></div>'+
-      '<span class="event-text">产品 '+(ev.product+1)+' 开始 '+r.stations[ev.station].name+'</span>'+
-      '<span class="event-time">'+ev.start.toFixed(0)+'m</span>'+
+      '<span class="event-text">产品 '+(ev.product+1)+' → '+r.stations[ev.station].name+'</span>'+
+      '<span class="event-time">'+ev.start.toFixed(0)+'-'+ev.end.toFixed(0)+'m</span>'+
     '</div>';
   });
   document.getElementById('events').innerHTML=eventsHtml;
