@@ -1,0 +1,1036 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UPH 流水线计算器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0d1117; --card:#161b22; --border:#30363d;
+  --blue:#58a6ff; --orange:#f0883e; --green:#3fb950;
+  --text:#e6edf3; --text2:#8b949e; --red:#f85149;
+  --mono:'JetBrains Mono',monospace; --sans:'Noto Sans SC',sans-serif;
+  --radius:8px;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  background:var(--bg); color:var(--text); font-family:var(--sans);
+  min-height:100vh;
+  background-image:
+    radial-gradient(ellipse at 20% 0%,rgba(88,166,255,0.04) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 100%,rgba(240,136,62,0.04) 0%,transparent 50%);
+}
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+.header {
+  border-bottom:1px solid var(--border); padding:14px 28px;
+  display:flex; align-items:center; justify-content:space-between;
+  background:rgba(22,27,34,0.8); backdrop-filter:blur(10px);
+  position:sticky; top:0; z-index:10;
+}
+.header-title { display:flex; align-items:center; gap:10px; font-size:16px; font-weight:700; }
+.header-title .icon {
+  width:28px; height:28px;
+  background:linear-gradient(135deg,var(--blue),var(--orange));
+  border-radius:6px; display:flex; align-items:center; justify-content:center;
+}
+.speed-select {
+  background:var(--card); border:1px solid var(--border); color:var(--text);
+  padding:6px 12px; border-radius:var(--radius); font-family:var(--mono);
+  font-size:12px; cursor:pointer; outline:none;
+}
+.speed-select:focus { border-color:var(--blue); }
+
+.main { display:grid; grid-template-columns:340px 1fr; min-height:calc(100vh - 57px); }
+
+.left-panel {
+  border-right:1px solid var(--border); padding:20px; overflow-y:auto;
+  max-height:calc(100vh - 57px);
+}
+.section-title {
+  font-size:11px; font-weight:700; text-transform:uppercase;
+  letter-spacing:1.5px; color:var(--text2); margin-bottom:12px;
+  display:flex; align-items:center; gap:6px;
+}
+
+.basic-param {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:14px; margin-bottom:20px;
+}
+.param-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.param-row:last-child { margin-bottom:0; }
+.param-label { font-size:13px; color:var(--text2); }
+.param-input {
+  background:var(--bg); border:1px solid var(--border); color:var(--text);
+  padding:7px 12px; border-radius:6px; font-family:var(--mono);
+  font-size:14px; width:90px; text-align:right; outline:none;
+  transition:border-color 0.2s;
+}
+.param-input:focus { border-color:var(--blue); }
+.param-hint { font-size:11px; color:var(--text2); margin-top:4px; }
+
+.station-list { display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+.station-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:12px; position:relative;
+  transition:border-color 0.2s;
+}
+.station-card:hover { border-color:#484f58; }
+.station-card.bottleneck {
+  border-color:var(--orange);
+  box-shadow:0 0 0 1px var(--orange),0 0 16px rgba(240,136,62,0.15);
+}
+.station-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.station-index {
+  width:22px; height:22px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-family:var(--mono); font-weight:700; flex-shrink:0;
+}
+.station-name-input {
+  background:transparent; border:none; border-bottom:1px dashed transparent;
+  color:var(--text); font-family:var(--sans); font-size:14px; font-weight:600;
+  flex:1; outline:none; transition:border-color 0.2s; padding:2px 0;
+}
+.station-name-input:focus { border-bottom-color:var(--blue); }
+.station-delete {
+  background:transparent; border:none; color:var(--text2); cursor:pointer;
+  font-size:18px; padding:2px 6px; border-radius:4px; transition:all 0.15s; line-height:1;
+}
+.station-delete:hover { background:rgba(248,81,73,0.15); color:var(--red); }
+.station-fields { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.station-field { display:flex; flex-direction:column; gap:3px; }
+.station-field label {
+  font-size:10px; color:var(--text2); text-transform:uppercase; letter-spacing:0.8px;
+}
+.station-field input {
+  background:var(--bg); border:1px solid var(--border); color:var(--text);
+  padding:6px 10px; border-radius:5px; font-family:var(--mono);
+  font-size:13px; outline:none; width:100%; transition:border-color 0.2s;
+}
+.station-field input:focus { border-color:var(--blue); }
+.station-field .unit { font-size:11px; color:var(--text2); margin-top:2px; }
+.station-util-bar { margin-top:10px; display:flex; align-items:center; gap:8px; }
+.util-label { font-size:10px; color:var(--text2); width:46px; flex-shrink:0; font-family:var(--mono); }
+.util-bar-bg { flex:1; height:4px; background:var(--bg); border-radius:2px; overflow:hidden; }
+.util-bar-fill { height:100%; border-radius:2px; transition:width 0.4s ease; }
+.util-pct { font-size:10px; font-family:var(--mono); color:var(--text2); width:34px; text-align:right; }
+.btl-tag {
+  position:absolute; top:-7px; right:10px; background:var(--orange); color:#000;
+  font-size:9px; font-weight:700; padding:2px 7px; border-radius:3px;
+  text-transform:uppercase; letter-spacing:0.5px; animation:pulse-tag 2s infinite;
+}
+@keyframes pulse-tag { 0%,100%{opacity:1} 50%{opacity:0.7} }
+
+.add-station-btn {
+  width:100%; background:transparent; border:1px dashed var(--border);
+  color:var(--text2); padding:10px; border-radius:var(--radius);
+  cursor:pointer; font-family:var(--sans); font-size:13px; transition:all 0.2s;
+  display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:14px;
+}
+.add-station-btn:hover { border-color:var(--blue); color:var(--blue); background:rgba(88,166,255,0.05); }
+
+.controls { display:flex; gap:8px; }
+.btn {
+  flex:1; padding:10px; border-radius:var(--radius); font-family:var(--sans);
+  font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all 0.2s;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+}
+.btn-primary {
+  background:linear-gradient(135deg,var(--blue),#4090e0); color:#fff;
+  box-shadow:0 2px 8px rgba(88,166,255,0.3);
+}
+.btn-primary:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(88,166,255,0.4); }
+.btn-primary:active { transform:translateY(0); }
+.btn-primary.playing { background:linear-gradient(135deg,var(--orange),#d07030); box-shadow:0 2px 8px rgba(240,136,62,0.3); }
+.btn-secondary { background:var(--card); color:var(--text); border:1px solid var(--border); }
+.btn-secondary:hover { border-color:#484f58; background:#1c2128; }
+
+.right-panel { display:flex; flex-direction:column; overflow:hidden; }
+.gantt-section {
+  flex:1; padding:16px 20px; border-bottom:1px solid var(--border);
+  display:flex; flex-direction:column; min-height:0;
+}
+.gantt-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.gantt-time-now {
+  font-family:var(--mono); font-size:13px; color:var(--orange);
+  background:rgba(240,136,62,0.1); padding:3px 10px; border-radius:4px;
+  border:1px solid rgba(240,136,62,0.3);
+}
+.gantt-container { flex:1; overflow:auto; position:relative; min-height:100px; }
+#ganttCanvas { display:block; }
+.empty-gantt {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:12px; color:var(--text2);
+}
+.empty-gantt-icon { font-size:40px; opacity:0.3; }
+.empty-gantt-text { font-size:14px; }
+
+.results-section { padding:16px 20px; overflow-y:auto; }
+.results-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  gap:10px; margin-bottom:14px;
+}
+.result-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:12px 14px;
+}
+.result-card.highlight { border-color:var(--green); background:rgba(63,185,80,0.06); }
+.result-card.warning { border-color:var(--orange); background:rgba(240,136,62,0.06); }
+.result-label {
+  font-size:10px; color:var(--text2); text-transform:uppercase;
+  letter-spacing:0.8px; margin-bottom:5px;
+}
+.result-value { font-family:var(--mono); font-size:20px; font-weight:700; color:var(--text); line-height:1; }
+.result-value.blue { color:var(--blue); }
+.result-value.green { color:var(--green); }
+.result-value.orange { color:var(--orange); }
+.result-sub { font-size:10px; color:var(--text2); margin-top:4px; font-family:var(--mono); }
+
+.usage-pills { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.usage-pill {
+  display:flex; align-items:center; gap:6px;
+  background:var(--card); border:1px solid var(--border);
+  border-radius:20px; padding:4px 10px; font-size:12px;
+}
+.usage-pill-dot { width:8px; height:8px; border-radius:50%; }
+.usage-pill-name { color:var(--text2); }
+.usage-pill-val { font-family:var(--mono); font-weight:600; font-size:11px; }
+
+.sim-progress { margin-top:12px; }
+.sim-progress-track {
+  height:6px; background:var(--bg); border-radius:3px; overflow:hidden;
+}
+.sim-progress-fill {
+  height:100%;
+  background:linear-gradient(90deg,var(--blue),var(--orange));
+  border-radius:3px; transition:width 0.1s linear;
+}
+.sim-time-labels {
+  display:flex; justify-content:space-between;
+  font-size:10px; font-family:var(--mono); color:var(--text2); margin-top:4px;
+}
+
+.tooltip {
+  position:fixed; background:#1c2128; border:1px solid var(--border);
+  border-radius:6px; padding:8px 12px; font-size:12px; color:var(--text);
+  pointer-events:none; z-index:100; max-width:200px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.4); font-family:var(--mono); display:none;
+}
+.tooltip-name { font-weight:700; color:var(--blue); margin-bottom:4px; font-size:11px; }
+.tooltip-time { color:var(--text2); font-size:11px; }
+
+.algo-expl {
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  padding:12px 14px; font-size:11px; color:var(--text2); line-height:1.7; margin-top:16px;
+}
+.algo-expl strong { color:var(--text); }
+.algo-expl .k { color:var(--blue); font-family:var(--mono); }
+
+@keyframes slideUp {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.animate-in { animation:slideUp 0.4s ease forwards; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">
+    <div class="icon">⚙</div>
+    UPH 流水线计算器
+  </div>
+  <select class="speed-select" id="speedSelect">
+    <option value="0.5">0.5x 慢速</option>
+    <option value="1" selected>1x 正常</option>
+    <option value="2">2x 快速</option>
+    <option value="5">5x 极速</option>
+    <option value="0">瞬间完成</option>
+  </select>
+</div>
+
+<div class="main">
+  <div class="left-panel">
+    <div class="section-title">📦 基本参数</div>
+    <div class="basic-param">
+      <div class="param-row">
+        <span class="param-label">产品总数</span>
+        <input class="param-input" type="number" id="productCount" value="13" min="1" max="500">
+      </div>
+      <div class="param-hint">产品片数（整数）</div>
+    </div>
+
+    <div class="section-title">🔧 工站配置</div>
+    <div class="station-list" id="stationList"></div>
+    <button class="add-station-btn" id="addStationBtn">+ 添加工站</button>
+
+    <div class="controls">
+      <button class="btn btn-primary" id="simBtn">
+        <span id="simBtnIcon">▶</span><span id="simBtnText">开始模拟</span>
+      </button>
+      <button class="btn btn-secondary" id="resetBtn">↺ 重置</button>
+    </div>
+
+    <div class="algo-expl">
+      <strong>📌 模拟逻辑</strong><br>
+      · 每站可设 <span class="k">缓冲区容量</span>（初始=1）<br>
+      · 产品完成工站i后，检查工站i+1缓冲是否满<br>
+      · 未满 → 进入缓冲；<strong>已满 → 卡在当前工站出口</strong>（机器暂停处理）<br>
+      · 各站机器按 FIFO 从缓冲取产品
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="gantt-section">
+      <div class="gantt-header">
+        <div class="section-title" style="margin:0">📊 甘特图 — 产品流动时间线</div>
+        <div class="gantt-time-now" id="ganttTimeNow">T = 0 min</div>
+      </div>
+      <div class="gantt-container" id="ganttContainer">
+        <canvas id="ganttCanvas"></canvas>
+        <div class="empty-gantt" id="emptyGantt">
+          <div class="empty-gantt-icon">📈</div>
+          <div class="empty-gantt-text">配置工站后，点击「开始模拟」</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-section" id="resultsSection" style="display:none">
+      <div class="section-title">📈 结果指标</div>
+      <div class="results-grid">
+        <div class="result-card highlight animate-in">
+          <div class="result-label">UPH 实际产能</div>
+          <div class="result-value green" id="resUPH">—</div>
+          <div class="result-sub">片 / 每小时</div>
+        </div>
+        <div class="result-card animate-in" style="animation-delay:0.05s">
+          <div class="result-label">总完工时间</div>
+          <div class="result-value blue" id="resTotalTime">—</div>
+          <div class="result-sub" id="resTotalTimeSub">—</div>
+        </div>
+        <div class="result-card animate-in" style="animation-delay:0.1s">
+          <div class="result-label">理论 UPH</div>
+          <div class="result-value" id="resTheoreticalUPH">—</div>
+          <div class="result-sub">无限缓冲上限</div>
+        </div>
+        <div class="result-card warning animate-in" style="animation-delay:0.15s">
+          <div class="result-label">瓶颈工站</div>
+          <div class="result-value orange" id="resBottleneck">—</div>
+          <div class="result-sub" id="resBottleneckSub">利用率 100%</div>
+        </div>
+      </div>
+      <div class="usage-pills" id="usagePills"></div>
+      <div class="sim-progress" id="simProgress" style="display:none">
+        <div class="progress-bar-track">
+          <div class="sim-progress-fill" id="simProgressFill" style="width:0%"></div>
+        </div>
+        <div class="sim-time-labels">
+          <span>T = 0 min</span>
+          <span id="simProgressEnd">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip">
+  <div class="tooltip-name" id="ttName"></div>
+  <div class="tooltip-time" id="ttTime"></div>
+</div>
+
+<script>
+
+// ─── Constants & Colors ───────────────────────
+const COLORS = [
+  '#58a6ff','#f0883e','#3fb950','#bc8cff',
+  '#ff7b72','#79c0ff','#ffa657','#56d364'
+];
+
+// ─── State ────────────────────────────────────
+let stations = [
+  {name:'涂层',time:6, buffer:2},
+  {name:'切割',time:20,buffer:2},
+  {name:'清洗',time:8, buffer:2}
+];
+
+let simResult  = null;
+let isPlaying  = false;
+let rafId      = null;
+let simStartWallTime = 0;
+let simStartTime     = 0;
+let totalSimTime     = 0;
+let speed             = 1;
+
+// ─── Station Render ────────────────────────────
+function renderStations() {
+  const list = document.getElementById('stationList');
+  list.innerHTML = '';
+  stations.forEach((s, i) => {
+    const color = COLORS[i % COLORS.length];
+    const card = document.createElement('div');
+    card.className = 'station-card';
+    card.id = `station-${i}`;
+    card.innerHTML = `
+      <div class="station-header">
+        <div class="station-index" style="background:${color}22;color:${color}">${i+1}</div>
+        <input class="station-name-input" value="${s.name}" data-i="${i}" placeholder="工站名称" maxlength="10" />
+        ${stations.length>1?`<button class="station-delete" data-i="${i}">×</button>`:''}
+      </div>
+      <div class="station-fields">
+        <div class="station-field">
+          <label>处理时间</label>
+          <input type="number" value="${s.time}" data-i="${i}" data-field="time" min="1" max="999" />
+          <div class="unit">分钟/片</div>
+        </div>
+        <div class="station-field">
+          <label>缓冲容量</label>
+          <input type="number" value="${s.buffer}" data-i="${i}" data-field="buffer" min="1" max="99" />
+          <div class="unit">片（初始=1）</div>
+        </div>
+      </div>
+      <div class="station-util-bar" id="util-bar-${i}" style="display:none">
+        <span class="util-label">利用率</span>
+        <div class="util-bar-bg"><div class="util-bar-fill" id="util-fill-${i}" style="width:0%;background:${color}"></div></div>
+        <span class="util-pct" id="util-pct-${i}">0%</span>
+      </div>`;
+    list.appendChild(card);
+  });
+
+  list.querySelectorAll('.station-name-input').forEach(el => {
+    el.addEventListener('input', e => { stations[e.target.dataset.i].name = e.target.value; });
+  });
+  list.querySelectorAll('input[data-field]').forEach(el => {
+    el.addEventListener('input', e => {
+      const i = parseInt(e.target.dataset.i);
+      const v = Math.max(1, parseInt(e.target.value)||1);
+      stations[i][e.target.dataset.field] = v;
+    });
+  });
+  list.querySelectorAll('.station-delete').forEach(el => {
+    el.addEventListener('click', e => {
+      stations.splice(parseInt(e.currentTarget.dataset.i),1);
+      renderStations();
+    });
+  });
+}
+
+document.getElementById('addStationBtn').addEventListener('click', () => {
+  stations.push({name:`工站${stations.length+1}`,time:10,buffer:2});
+  renderStations();
+});
+
+// ─── Simulation Engine ────────────────────────
+/*
+  Model:
+  - station 0: products enter directly (no input buffer needed)
+  - stations 1..n-1: each has an input buffer of capacity stns[i].buffer
+  - When a product finishes station i at time t:
+      if i == last → product exits
+      else if buffer[i+1].count < bufferCap[i+1]:
+          buffer[i+1].push(product)   // product waits at next buffer
+          machine[i] becomes free at t
+      else:
+          // buffer full — product is blocked at output of station i
+          // machine[i] STAYS BUSY holding this product
+          blockedAt[i].push(product)
+  - When a machine i becomes idle (has no blocked product):
+      if buffer[i].count > 0:
+          buffer[i].count--
+          process first product from buffer queue
+          machine[i] busy until t + stns[i].time
+      else if i==0 && nextUnstartedProduct < nProducts:
+          // station 0: can start next unstarted product
+          start next product at time t
+  - When buffer i decrements (product taken by machine):
+      if blockedAt[i-1].length > 0:
+          // machine was blocked — now has space
+          try to move the oldest blocked product into buffer i
+          if buffer i not full: move it, machine[i-1] starts processing again
+*/
+function runSimulation(nProducts, stns) {
+  const n = stns.length;
+  const productEvents = Array.from({length:nProducts},()=>[]);
+
+  // Buffer queues: buffer[i] = FIFO array of product indices (i>=1)
+  const buffers = Array.from({length:n},()=>[]);
+  const bufferCap = stns.map((_,i)=>i===0?Infinity:stns[i].buffer);
+  const bufferCount = new Array(n).fill(0);
+
+  // Blocked: blockedAt[i] = array of {product} blocked at output of station i
+  const blockedAt = Array.from({length:n},()=>[]);
+
+  // Machine busy-until times
+  const machineFree = new Array(n).fill(0);
+
+  // Track: which buffer does each product currently occupy?
+  const productAt = new Array(nProducts).fill(-1); // -1=not started, >=0=station index
+
+  // Next unstarted product for station 0
+  let nextUnstarted = 0;
+
+  // Event queue: {time, kind, product?, station?}
+  let eq = [];
+
+  function scheduleProcess(product, station, startTime) {
+    const endTime = startTime + stns[station].time;
+    machineFree[station] = endTime;
+    productAt[product] = station;
+    productEvents[product].push({station, start:startTime, end:endTime});
+    eq.push({time:endTime, kind:'COMPLETE', product, station});
+  }
+
+  function tryStartFromBuffer(station, currentTime) {
+    if (buffers[station].length === 0) return false;
+    // Check if machine is actually free
+    if (machineFree[station] > currentTime) return false;
+    const product = buffers[station].shift();
+    bufferCount[station]--;
+    scheduleProcess(product, station, Math.max(currentTime, machineFree[station]));
+    // When product enters machine, buffer station just freed
+    // If previous station had blocked product, try to unblock it
+    if (station > 0 && blockedAt[station-1].length > 0) {
+      // Check if buffer at station has space now
+      if (bufferCount[station] < bufferCap[station]) {
+        const bp = blockedAt[station-1].shift();
+        // Move blocked product into buffer[station]
+        buffers[station].push(bp.product);
+        bufferCount[station]++;
+        productAt[bp.product] = station;
+        // machineFree[station-1] is still set to currentTime (blocked state)
+        // But we need to re-trigger machine[station-1] to process this
+        // Since machine was blocked (holding product at output), now it can start it
+        // Actually: machine at station-1 will become free when product moves to buffer
+        // The machine was "busy" (blocked) — now it's free to pick next from its own buffer
+        // BUT: we need to schedule a MACHINE_FREE event for station-1
+        eq.push({time:currentTime, kind:'MACHINE_FREE', station:station-1});
+      }
+    }
+    return true;
+  }
+
+  function tryStartAtStation0(currentTime) {
+    if (nextUnstarted >= nProducts) return;
+    if (machineFree[0] > currentTime) return;
+    const product = nextUnstarted++;
+    scheduleProcess(product, 0, Math.max(currentTime, machineFree[0]));
+  }
+
+  // Bootstrap: start product 0 at station 0 at time 0
+  nextUnstarted = 1;
+  scheduleProcess(0, 0, 0);
+  eq.push({time:0, kind:'MACHINE_FREE', station:0});
+
+  // Also schedule a MACHINE_FREE for station 0 at time machineFree[0]
+  eq.push({time:machineFree[0], kind:'MACHINE_FREE', station:0});
+
+  // Main simulation loop
+  let iteration = 0;
+  const MAX_ITER = nProducts * n * 10 + 1000;
+
+  while (eq.length > 0 && iteration++ < MAX_ITER) {
+    // Get next event (simple sort)
+    eq.sort((a,b)=>a.time-b.time||a.kind.localeCompare(b.kind));
+    const ev = eq.shift();
+    const t = ev.time;
+    const station = ev.station;
+
+    if (ev.kind === 'COMPLETE') {
+      const product = ev.product;
+      if (productAt[product] !== station) continue; // already moved
+
+      if (station === n-1) {
+        // Last station: product exits system
+        productAt[product] = -2; // -2 = done
+      } else {
+        // Try to enter next buffer
+        const next = station + 1;
+        if (bufferCount[next] < bufferCap[next]) {
+          // Buffer has space
+          buffers[next].push(product);
+          bufferCount[next]++;
+          productAt[product] = next;
+          // Machine at station is now free
+          eq.push({time:t, kind:'MACHINE_FREE', station});
+          // Also check if previous blocked can now move
+          if (station > 0 && blockedAt[station-1].length > 0) {
+            // buffer at station just received a product, but it was not full before
+            // Actually: buffer count didn't change (we took from machine, put in buffer)
+            // Previous machine was blocked because buffer was full
+            // Now buffer decreased by 1 (from machine → buffer), but increased by 1 (from buffer → ???)
+            // Wait: blockedAt[station-1] means buffer[station] was full when product tried to enter
+            // But machineFree[station-1] was set to Infinity/t
+            // Now that machineFree[station-1] is set to t (free), we need to try the blocked one
+            // But: buffer[station] just received one product — did it have space?
+            // buffer[station].count was < bufferCap[station] before... wait
+            // blockedAt[station-1] means: product at station-1 wanted to enter buffer[station] but it was full
+            // bufferCount[station] == bufferCap[station] at that time
+            // Now we added to buffer[station] — but wait, we didn't add to buffer[station] here
+            // We added to buffer[next] = buffer[station+1]
+            // So blockedAt[station-1] is unrelated to this
+          }
+          // Try to start machine at next station immediately if free
+          if (machineFree[next] <= t) {
+            tryStartFromBuffer(next, t);
+          }
+        } else {
+          // Buffer full — product blocked at station output
+          productAt[product] = -3; // -3 = blocked at output
+          blockedAt[station].push({product, blockTime:t});
+          // Machine stays busy — machineFree[station] already = t (from scheduleProcess)
+          // The machine cannot process new products until the blocked one moves
+          // We'll handle this via a BUFFER_DRAIN event
+        }
+      }
+    }
+
+    else if (ev.kind === 'MACHINE_FREE') {
+      const s = station;
+      // Try to free a blocked product first
+      if (blockedAt[s].length > 0) {
+        const nextS = s + 1;
+        if (nextS < n && bufferCount[nextS] < bufferCap[nextS]) {
+          // Can move the blocked product
+          const bp = blockedAt[s].shift();
+          buffers[nextS].push(bp.product);
+          bufferCount[nextS]++;
+          productAt[bp.product] = nextS;
+          // Machine is now free (blocked product moved)
+          // Start processing it immediately
+          scheduleProcess(bp.product, s, Math.max(t, machineFree[s]));
+          // Try to start next station
+          if (machineFree[nextS] <= t) {
+            tryStartFromBuffer(nextS, t);
+          }
+        }
+        // else still blocked — do nothing
+        continue;
+      }
+
+      // Normal: try to pick from own buffer
+      if (tryStartFromBuffer(s, t)) continue;
+
+      // Station 0: can start next unstarted product
+      if (s === 0 && nextUnstarted < nProducts) {
+        tryStartAtStation0(t);
+        continue;
+      }
+    }
+  }
+
+  // Check if all products done
+  const allDone = productAt.every(p => p === -2);
+  if (!allDone) {
+    console.warn('Simulation may not have completed for all products');
+  }
+
+  // Compute results
+  const lastEventTimes = productEvents.map(evs => {
+    if (!evs.length) return 0;
+    return Math.max(...evs.map(e => e.end));
+  });
+  const totalTime = Math.max(...lastEventTimes);
+
+  // Machine utilization
+  const machineTotalBusy = new Array(n).fill(0);
+  productEvents.forEach((evs, p) => {
+    evs.forEach(e => {
+      machineTotalBusy[e.station] += e.end - e.start;
+    });
+  });
+  const utilization = machineTotalBusy.map(b => totalTime > 0 ? b/totalTime : 0);
+
+  const bottleneckIdx = utilization.indexOf(Math.max(...utilization));
+  const slowestTime = Math.max(...stns.map(s=>s.time));
+  const theoreticalUPH = 60 / slowestTime;
+  const actualUPH = nProducts / (totalTime/60);
+
+  return {
+    productEvents,
+    totalTime,
+    uph: actualUPH,
+    theoreticalUPH,
+    bottleneckIdx,
+    utilization,
+    productCount: nProducts,
+    stations: stns.map(s=>({name:s.name,time:s.time}))
+  };
+}
+
+// ─── Canvas Gantt Renderer ────────────────────
+const canvas = document.getElementById('ganttCanvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+const ttName  = document.getElementById('ttName');
+const ttTime  = document.getElementById('ttTime');
+
+let hoveredBar = null;
+
+function drawGantt(sim, currentTime) {
+  if (!sim) return;
+  const {productEvents, productCount, stations:stns, totalTime} = sim;
+  const n = stns.length;
+
+  const padL = 52, padR = 20, padT = 30, padB = 20;
+  const rowH = 26, rowPad = 4;
+  const totalH = padT + padB + productCount*(rowH+rowPad) + 40; // +40 for header
+  const totalW = canvas.parentElement.clientWidth || 800;
+  const chartW = totalW - padL - padR;
+
+  canvas.width  = totalW;
+  canvas.height = totalH;
+
+  const tMax = Math.max(totalTime, 1);
+
+  ctx.clearRect(0, 0, totalW, totalH);
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  // Time axis header
+  const headerY = padT - 14;
+  const numTicks = Math.min(10, Math.ceil(tMax/5));
+  for (let i = 0; i <= numTicks; i++) {
+    const t = Math.round(i * tMax / numTicks);
+    const x = padL + (t/tMax)*chartW;
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${t}m`, x, headerY);
+    // Grid line
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, totalH - padB);
+    ctx.stroke();
+  }
+
+  // Station header row
+  const stationHeaderH = 20;
+  for (let i = 0; i < n; i++) {
+    // Calculate station column span (approximate)
+    // Just show colored dots in header
+    const dotX = padL + 10 + i * 30;
+    ctx.fillStyle = COLORS[i % COLORS.length];
+    ctx.beginPath();
+    ctx.arc(dotX, headerY, 5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(stns[i].name, dotX+8, headerY+3);
+  }
+
+  // Current time line
+  if (currentTime > 0 && currentTime <= tMax) {
+    const cx = padL + (currentTime/tMax)*chartW;
+    ctx.strokeStyle = '#f0883e';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(cx, padT);
+    ctx.lineTo(cx, totalH-padB);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Product rows
+  productEvents.forEach((events, pIdx) => {
+    const rowY = padT + 30 + pIdx*(rowH+rowPad);
+    const rowMid = rowY + rowH/2;
+
+    // Row background
+    ctx.fillStyle = pIdx % 2 === 0 ? '#161b22' : '#0d1117';
+    ctx.fillRect(padL, rowY, chartW, rowH);
+
+    // Product label
+    ctx.fillStyle = '#58a6ff';
+    ctx.font = 'bold 11px JetBrains Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`P${pIdx+1}`, padL-6, rowMid+4);
+
+    // Draw events
+    events.forEach(ev => {
+      const x1 = padL + (Math.max(0,ev.start)/tMax)*chartW;
+      const x2 = padL + (ev.end/tMax)*chartW;
+      const bw = Math.max(3, x2-x1);
+      const color = COLORS[ev.station % COLORS.length];
+
+      ctx.fillStyle = color + 'cc';
+      ctx.beginPath();
+      ctx.roundRect(x1, rowY+3, bw, rowH-6, 3);
+      ctx.fill();
+
+      // Station label inside bar if wide enough
+      if (bw > 30) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '9px Noto Sans SC, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(stns[ev.station].name, x1+4, rowMid+3);
+      }
+
+      // Invisible hit area
+      ctx.fillStyle = 'transparent';
+      ctx.fillRect(x1, rowY, bw, rowH);
+    });
+  });
+
+  // Bottom legend
+  const legendY = totalH - padB + 8;
+  stns.forEach((s, i) => {
+    const lx = padL + i * 100;
+    ctx.fillStyle = COLORS[i % COLORS.length];
+    ctx.beginPath();
+    ctx.roundRect(lx, legendY, 12, 8, 2);
+    ctx.fill();
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px Noto Sans SC, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${s.name} (${s.time}m)`, lx+16, legendY+7);
+  });
+}
+
+// ─── Canvas hover ─────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  if (!simResult) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const padL = 52, padR = 20, padT = 30, padB = 20;
+  const rowH = 26, rowPad = 4;
+  const chartW = canvas.width - padL - padR;
+  const tMax = Math.max(simResult.totalTime, 1);
+
+  // Find which row
+  const relY = my - (padT + 30);
+  if (relY < 0) return;
+  const pIdx = Math.floor(relY / (rowH + rowPad));
+  if (pIdx < 0 || pIdx >= simResult.productCount) {
+    tooltip.style.display = 'none';
+    return;
+  }
+
+  // Find which event
+  const events = simResult.productEvents[pIdx] || [];
+  const ev = events.find(e => {
+    const x1 = padL + (e.start/tMax)*chartW;
+    const x2 = padL + (e.end/tMax)*chartW;
+    return mx >= x1 && mx <= x2;
+  });
+
+  if (ev) {
+    const stationName = simResult.stations[ev.station].name;
+    ttName.textContent = `P${pIdx+1} · ${stationName}`;
+    ttTime.textContent = `${ev.start.toFixed(0)}m → ${ev.end.toFixed(0)}m (${(ev.end-ev.start).toFixed(0)}m)`;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 12) + 'px';
+    tooltip.style.top  = (e.clientY - 10) + 'px';
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => { tooltip.style.display='none'; });
+
+// ─── Results Display ──────────────────────────
+function showResults(sim) {
+  const el = document.getElementById('resultsSection');
+  el.style.display = 'block';
+  el.classList.add('animate-in');
+
+  const totalMin = sim.totalTime;
+  const uph = sim.uph;
+  const theo = sim.theoreticalUPH;
+  const hours = Math.floor(totalMin/60);
+  const mins  = Math.round(totalMin%60);
+
+  document.getElementById('resUPH').textContent = uph.toFixed(2);
+  document.getElementById('resTotalTime').textContent = `${totalMin.toFixed(0)} min`;
+  document.getElementById('resTotalTimeSub').textContent =
+    hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  document.getElementById('resTheoreticalUPH').textContent = theo.toFixed(2);
+  document.getElementById('resBottleneck').textContent = sim.stations[sim.bottleneckIdx].name;
+  document.getElementById('resBottleneckSub').textContent =
+    `利用率 ${(sim.utilization[sim.bottleneckIdx]*100).toFixed(0)}%`;
+
+  // Utilization bars
+  sim.stations.forEach((s, i) => {
+    const bar = document.getElementById(`util-bar-${i}`);
+    if (!bar) return;
+    bar.style.display = 'flex';
+    const fill = document.getElementById(`util-fill-${i}`);
+    const pct  = document.getElementById(`util-pct-${i}`);
+    fill.style.width = (sim.utilization[i]*100)+'%';
+    pct.textContent = (sim.utilization[i]*100).toFixed(0)+'%';
+  });
+
+  // Bottleneck tag
+  document.querySelectorAll('.station-card').forEach((c,i) => {
+    c.classList.toggle('bottleneck', i === sim.bottleneckIdx);
+    const existing = c.querySelector('.btl-tag');
+    if (existing) existing.remove();
+    if (i === sim.bottleneckIdx) {
+      const tag = document.createElement('div');
+      tag.className = 'btl-tag';
+      tag.textContent = '瓶颈';
+      c.appendChild(tag);
+    }
+  });
+
+  // Usage pills
+  const pills = document.getElementById('usagePills');
+  pills.innerHTML = '';
+  sim.stations.forEach((s,i) => {
+    const pill = document.createElement('div');
+    pill.className = 'usage-pill';
+    pill.innerHTML = `<div class="usage-pill-dot" style="background:${COLORS[i%COLORS.length]}"></div>
+      <span class="usage-pill-name">${s.name}</span>
+      <span class="usage-pill-val" style="color:${COLORS[i%COLORS.length]}">${(sim.utilization[i]*100).toFixed(0)}%</span>`;
+    pills.appendChild(pill);
+  });
+
+  document.getElementById('simProgressEnd').textContent = `${totalMin.toFixed(0)} min`;
+}
+
+// ─── Simulation Control ─────────────────────
+function stopSim() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId=null; }
+  isPlaying = false;
+  const btn = document.getElementById('simBtn');
+  const icon = document.getElementById('simBtnIcon');
+  const text = document.getElementById('simBtnText');
+  btn.classList.remove('playing');
+  icon.textContent = '▶';
+  text.textContent = '开始模拟';
+  document.getElementById('simProgress').style.display = 'none';
+}
+
+function doSim() {
+  stopSim();
+
+  const nProducts = parseInt(document.getElementById('productCount').value) || 13;
+  simResult = runSimulation(nProducts, stations);
+  totalSimTime = simResult.totalTime;
+
+  // Show results
+  showResults(simResult);
+
+  // Draw full Gantt
+  document.getElementById('emptyGantt').style.display = 'none';
+  drawGantt(simResult, 0);
+  document.getElementById('ganttTimeNow').textContent = 'T = 0 min';
+
+  // Start animation
+  const speedVal = parseFloat(document.getElementById('speedSelect').value);
+  speed = speedVal;
+  simStartWallTime = performance.now();
+  simStartTime = 0;
+
+  const btn = document.getElementById('simBtn');
+  const icon = document.getElementById('simBtnIcon');
+  const text = document.getElementById('simBtnText');
+  btn.classList.add('playing');
+  icon.textContent = '⏸';
+  text.textContent = '暂停';
+
+  if (speed === 0) {
+    // Instant
+    drawGantt(simResult, totalSimTime);
+    document.getElementById('ganttTimeNow').textContent = `T = ${totalSimTime.toFixed(0)} min`;
+    document.getElementById('simProgressFill').style.width = '100%';
+    stopSim();
+    return;
+  }
+
+  document.getElementById('simProgress').style.display = 'block';
+
+  function tick() {
+    const elapsed = (performance.now() - simStartWallTime) / 1000;
+    const curT = Math.min(elapsed * speed, totalSimTime);
+    document.getElementById('ganttTimeNow').textContent = `T = ${curT.toFixed(0)} min`;
+    document.getElementById('simProgressFill').style.width = ((curT/totalSimTime)*100).toFixed(1)+'%';
+    drawGantt(simResult, curT);
+    if (curT >= totalSimTime) {
+      stopSim();
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+  isPlaying = true;
+}
+
+document.getElementById('simBtn').addEventListener('click', () => {
+  if (isPlaying) {
+    stopSim();
+  } else {
+    doSim();
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  stopSim();
+  simResult = null;
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('emptyGantt').style.display = 'flex';
+  document.getElementById('simProgress').style.display = 'none';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  canvas.height = canvas.parentElement.clientHeight || 300;
+  document.getElementById('ganttTimeNow').textContent = 'T = 0 min';
+  document.querySelectorAll('.station-card').forEach(c => {
+    c.classList.remove('bottleneck');
+    const t = c.querySelector('.btl-tag');
+    if (t) t.remove();
+    const bar = c.querySelector('.station-util-bar');
+    if (bar) bar.style.display = 'none';
+  });
+});
+
+document.getElementById('speedSelect').addEventListener('change', e => {
+  speed = parseFloat(e.target.value);
+  if (isPlaying && speed > 0) {
+    // Restart with new speed
+    const curT = parseFloat(document.getElementById('ganttTimeNow').textContent.replace('T = ','').replace(' min','')) || 0;
+    stopSim();
+    // Re-start from current position
+    simStartWallTime = performance.now();
+    simStartTime = curT;
+    document.getElementById('simBtn').classList.add('playing');
+    document.getElementById('simBtnIcon').textContent = '⏸';
+    document.getElementById('simBtnText').textContent = '暂停';
+    document.getElementById('simProgress').style.display = 'block';
+    isPlaying = true;
+    function tick() {
+      const elapsed = (performance.now() - simStartWallTime)/1000;
+      const curT2 = Math.min(simStartTime + elapsed*speed, totalSimTime);
+      document.getElementById('ganttTimeNow').textContent = `T = ${curT2.toFixed(0)} min`;
+      document.getElementById('simProgressFill').style.width = ((curT2/totalSimTime)*100).toFixed(1)+'%';
+      drawGantt(simResult, curT2);
+      if (curT2 >= totalSimTime) { stopSim(); return; }
+      rafId = requestAnimationFrame(tick);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+});
+
+// ─── Init ─────────────────────────────────────
+renderStations();
+
+// Handle resize
+window.addEventListener('resize', () => {
+  if (simResult) drawGantt(simResult, parseFloat(
+    document.getElementById('ganttTimeNow').textContent.replace('T = ','').replace(' min','')) || 0);
+});
+</script>
+</body>
+</html>
+
+</script>
+</body>
+</html>
